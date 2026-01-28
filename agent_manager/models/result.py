@@ -49,6 +49,8 @@ class JobResult(BaseModel):
     error_message: str | None = Field(default=None, alias="error_message")
     log_file: str | None = Field(default=None, alias="log_file")
     claude_output: str | None = Field(default=None, alias="claude_output")
+    output_dir: str | None = Field(default=None, alias="output_dir")
+    session_id: str | None = Field(default=None, alias="session_id")
 
     model_config = {"populate_by_name": True}
 

@@ -19,6 +19,8 @@ class ProviderConfig:
     context: str = ""
     permission_mode: str | None = None  # "acceptEdits", "bypassPermissions", etc.
     model: str | None = None  # "opus", "sonnet", "haiku", or full model ID
+    mcp_servers: list = field(default_factory=list)  # MCP server configs (MCPServer objects)
+    extra_env: dict[str, str] = field(default_factory=dict)  # Additional env vars
 
 
 @dataclass
@@ -65,6 +67,7 @@ class LLMProvider(ABC):
         prompt: str,
         config: ProviderConfig,
         log_file: Path | None = None,
+        session_id: str | None = None,
     ) -> LLMResponse:
         """Execute a prompt and return the response.
 
@@ -72,6 +75,7 @@ class LLMProvider(ABC):
             prompt: The prompt to send to the LLM
             config: Configuration for this execution
             log_file: Optional file to write logs to
+            session_id: Optional session ID to continue
 
         Returns:
             LLMResponse with the result
@@ -84,6 +88,7 @@ class LLMProvider(ABC):
         prompt: str,
         config: ProviderConfig,
         log_file: Path | None = None,
+        session_id: str | None = None,
     ) -> LLMResponse:
         """Synchronous version of execute.
 

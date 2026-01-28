@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from pathlib import Path
+
 import yaml
+from pydantic import BaseModel, Field, model_validator
 from typing_extensions import Self
-from pydantic import BaseModel, Field
 
 
 class TriggerType(str, Enum):
@@ -26,6 +28,70 @@ class Trigger(BaseModel):
     watch_path: str | None = None
 
 
+class MCPServer(BaseModel):
+    """MCP server configuration for agent integrations."""
+
+    name: str
+    type: str = "stdio"  # "stdio" or "sse"
+    command: str | None = None  # For stdio servers
+    args: list[str] | None = None  # Additional args for stdio command
+    url: str | None = None  # For SSE servers
+    env: dict[str, str] | None = None  # Environment variables for the server
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_server_config(self) -> Self:
+        """Validate server configuration."""
+        if self.type == "stdio" and not self.command:
+            raise ValueError(f"MCP server '{self.name}' with type 'stdio' requires 'command'")
+        if self.type == "sse" and not self.url:
+            raise ValueError(f"MCP server '{self.name}' with type 'sse' requires 'url'")
+        return self
+
+
+class EnvVar(BaseModel):
+    """Environment variable configuration for agent integrations."""
+
+    name: str
+    value: str | None = None  # Direct value
+    from_env: str | None = Field(default=None, alias="from_env")  # Read from system env
+    from_file: str | None = Field(default=None, alias="from_file")  # Read from file
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_env_var(self) -> Self:
+        """Validate that exactly one source is specified."""
+        sources = [self.value is not None, self.from_env is not None, self.from_file is not None]
+        if sum(sources) != 1:
+            raise ValueError(
+                f"EnvVar '{self.name}' must have exactly one of: value, from_env, or from_file"
+            )
+        return self
+
+    def resolve(self) -> str | None:
+        """Resolve the environment variable value."""
+        if self.value is not None:
+            return self.value
+        if self.from_env is not None:
+            return os.environ.get(self.from_env)
+        if self.from_file is not None:
+            path = Path(self.from_file).expanduser()
+            if path.exists():
+                return path.read_text().strip()
+        return None
+
+
+class Integration(BaseModel):
+    """Integration configuration for agents."""
+
+    mcp_servers: list[MCPServer] | None = Field(default=None, alias="mcp_servers")
+    env: list[EnvVar] | None = None
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
+
+
 class Agent(BaseModel):
     """A reusable agent template with default settings."""
 
@@ -38,6 +104,7 @@ class Agent(BaseModel):
     allowed_tools: list[str] = Field(alias="allowed_tools")
     max_turns: int = Field(default=10, alias="max_turns")
     max_budget_usd: float = Field(default=1.0, alias="max_budget_usd")
+    integrations: Integration | None = None  # MCP servers and env vars
 
     model_config = {
         "populate_by_name": True,

@@ -31,6 +31,9 @@ class ExpressionContext:
     # Workflow-level variables
     variables: dict[str, str] = field(default_factory=dict)
 
+    # Current job context (for ${{ job.output_dir }} etc.)
+    current_job: dict[str, str] = field(default_factory=dict)
+
     def set_outputs(self, job: str, outputs: dict[str, str]) -> None:
         """Set outputs for a job."""
         self.job_outputs[job] = outputs
@@ -52,9 +55,22 @@ class ExpressionContext:
         self.step_outputs.clear()
         self.step_statuses.clear()
 
+    def set_current_job(self, output_dir: str) -> None:
+        """Set the current job context."""
+        self.current_job = {"output_dir": output_dir}
+
+    def clear_current_job(self) -> None:
+        """Clear the current job context."""
+        self.current_job.clear()
+
     def resolve(self, path: str) -> str | None:
         """Resolve a variable path like 'jobs.lint.outputs.has_errors'."""
         parts = path.split(".")
+
+        # Handle job.X pattern (current job context, e.g., job.output_dir)
+        if len(parts) == 2 and parts[0] == "job":
+            key = parts[1]
+            return self.current_job.get(key)
 
         # Handle jobs.X.outputs.Y pattern
         if len(parts) == 4 and parts[0] == "jobs" and parts[2] == "outputs":

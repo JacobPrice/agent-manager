@@ -88,6 +88,9 @@ class Job(BaseModel):
     needs: list[str] | None = None
     if_condition: str | None = Field(default=None, alias="if")
 
+    # Session continuation - continue a previous job's Claude session
+    continue_session: str | None = Field(default=None, alias="continue_session")
+
     # Structured outputs to extract from response
     report: list[str] | None = None
 
@@ -162,6 +165,23 @@ class Workflow(BaseModel):
                         raise ValueError(
                             f"Job '{job_name}' depends on unknown job '{dep}'"
                         )
+
+        # Check continue_session references
+        for job_name, job in self.jobs.items():
+            if job.continue_session:
+                # Target must exist
+                if job.continue_session not in self.jobs:
+                    raise ValueError(
+                        f"Job '{job_name}' has continue_session referencing "
+                        f"unknown job '{job.continue_session}'"
+                    )
+                # Target must be in needs (to ensure it runs first)
+                if not job.needs or job.continue_session not in job.needs:
+                    raise ValueError(
+                        f"Job '{job_name}' has continue_session='{job.continue_session}' "
+                        f"but '{job.continue_session}' is not in 'needs'. "
+                        f"Add it to ensure proper execution order."
+                    )
 
         # Check for cycles
         self._detect_cycles()

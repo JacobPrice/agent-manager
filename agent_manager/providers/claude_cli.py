@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
+from agent_manager.models.agent import MCPServer
 from agent_manager.providers.base import LLMProvider, LLMResponse, ProviderConfig
 
 
@@ -91,10 +94,18 @@ class ClaudeCLIProvider(LLMProvider):
         cmd.extend(["--max-turns", str(config.max_turns)])
 
         # Set up environment
-        import os
-
         env = os.environ.copy()
         env["HOME"] = str(Path.home())
+
+        # Merge extra environment variables
+        if config.extra_env:
+            env.update(config.extra_env)
+
+        # Generate MCP config file if servers are specified
+        mcp_config_file: Path | None = None
+        if config.mcp_servers:
+            mcp_config_file = self._generate_mcp_config(config.mcp_servers)
+            cmd.extend(["--mcp-config", str(mcp_config_file)])
 
         try:
             # Run the command
@@ -139,6 +150,44 @@ class ClaudeCLIProvider(LLMProvider):
                 result="",
                 error=f"Failed to execute Claude CLI: {e}",
             )
+        finally:
+            # Clean up MCP config file
+            if mcp_config_file and mcp_config_file.exists():
+                mcp_config_file.unlink()
+
+    def _generate_mcp_config(self, servers: list[MCPServer]) -> Path:
+        """Generate a temporary MCP config JSON file.
+
+        Args:
+            servers: List of MCP server configurations
+
+        Returns:
+            Path to the temporary config file
+        """
+        config: dict[str, Any] = {"mcpServers": {}}
+
+        for server in servers:
+            server_config: dict[str, Any] = {}
+
+            if server.type == "stdio":
+                server_config["command"] = server.command
+                if server.args:
+                    server_config["args"] = server.args
+            elif server.type == "sse":
+                server_config["url"] = server.url
+                server_config["transport"] = "sse"
+
+            if server.env:
+                server_config["env"] = server.env
+
+            config["mcpServers"][server.name] = server_config
+
+        # Write to temp file
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="mcp_config_")
+        with os.fdopen(fd, "w") as f:
+            json.dump(config, f, indent=2)
+
+        return Path(path)
 
     def _parse_response(self, output: str) -> LLMResponse:
         """Parse the JSON response from claude CLI."""

@@ -131,6 +131,8 @@ class WorkflowRunner:
             context=context,
             log_directory=log_dir,
             dry_run=dry_run,
+            run_id=run.id,
+            session_ids=None,  # No session continuation for single job runs
         )
 
         run.update_job_result(result)
@@ -155,6 +157,9 @@ class WorkflowRunner:
         running_tasks: dict[str, asyncio.Task[tuple[str, JobStatus]]] = {}
         semaphore = asyncio.Semaphore(self.max_concurrent_jobs)
 
+        # Track session IDs for session continuation
+        session_ids: dict[str, str] = {}
+
         async def run_job(job_name: str) -> tuple[str, JobStatus]:
             """Run a single job and return its name and status."""
             async with semaphore:
@@ -170,11 +175,17 @@ class WorkflowRunner:
                     context=context,
                     log_directory=log_dir,
                     dry_run=dry_run,
+                    run_id=run.id,
+                    session_ids=session_ids,
                 )
 
                 # Update context with outputs
                 context.set_outputs(job_name, result.outputs)
                 context.set_status(job_name, result.status.value)
+
+                # Track session ID for continuation
+                if result.session_id:
+                    session_ids[job_name] = result.session_id
 
                 run.update_job_result(result)
                 self.store.save_run(run)
