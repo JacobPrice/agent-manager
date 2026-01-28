@@ -1,33 +1,31 @@
-# Swift Package Manager
-.build/
-.swiftpm/
-Package.resolved
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
 
-# Xcode
-*.xcodeproj/
-*.xcworkspace/
-xcuserdata/
-DerivedData/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-*.xccheckout
-*.moved-aside
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
 
 # macOS
 .DS_Store
-.AppleDouble
-.LSOverride
 ._*
 
 # IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-
-# Build artifacts
-*.o
-*.a
-*.dylib
