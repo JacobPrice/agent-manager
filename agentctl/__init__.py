@@ -79,6 +79,26 @@ def run(
     console.print(result.summary())
     console.print()
 
+    # Show job outputs if any were captured
+    has_outputs = any(r.outputs for r in result.job_results.values())
+    if has_outputs:
+        console.print("[bold]Outputs:[/bold]")
+        console.print()
+        for job_name, job_result in sorted(result.job_results.items()):
+            if not job_result.outputs:
+                continue
+            console.print(f"  [bold cyan]{job_name}:[/bold cyan]")
+            for key, value in job_result.outputs.items():
+                # Wrap long values
+                if len(value) > 120:
+                    console.print(f"    [bold]{key}:[/bold]")
+                    # Indent wrapped text
+                    for line in value.split("\n"):
+                        console.print(f"      {line}")
+                else:
+                    console.print(f"    [bold]{key}:[/bold] {value}")
+            console.print()
+
     if result.status.value == "failed":
         raise typer.Exit(1)
 

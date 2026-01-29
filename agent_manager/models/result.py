@@ -96,9 +96,9 @@ class JobResult(BaseModel):
         """Mark the job as completed with outputs."""
         self.status = JobStatus.COMPLETED
         self.end_time = datetime.now()
-        if outputs:
+        if outputs is not None:
             self.outputs = outputs
-        if claude_output:
+        if claude_output is not None:
             self.claude_output = claude_output
 
     def mark_failed(self, error: str) -> None:

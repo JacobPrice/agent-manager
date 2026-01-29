@@ -186,21 +186,47 @@ class JobRunner:
                 context_results = await self._gather_context_parallel(job.context, working_dir)
 
         # Step 2: Build prompt from context + goals
-        prompt = self._build_goals_prompt(job, context_results, result.output_dir)
+        prompt = self._build_goals_prompt(job, context_results, result.output_dir, context)
 
         # Add output instructions if report fields are declared
         outputs = job.all_outputs
         if outputs:
             prompt += self._build_output_instructions(outputs, result.output_dir)
 
+        # Resolve agent integrations if job references an agent
+        from agent_manager.models.agent import MCPServer
+        mcp_servers: list[MCPServer] = []
+        extra_env: dict[str, str] = {}
+
+        if job.agent:
+            try:
+                agent = self.agent_store.load(job.agent)
+                if agent.integrations:
+                    if agent.integrations.mcp_servers:
+                        mcp_servers = agent.integrations.mcp_servers
+                    if agent.integrations.env:
+                        for env_var in agent.integrations.env:
+                            value = env_var.resolve()
+                            if value is not None:
+                                extra_env[env_var.name] = value
+            except Exception:
+                pass  # Agent loading is best-effort for goals-based jobs
+
+        # Build allowed tools list - add Write if file-based outputs are needed
+        allowed_tools = list(workflow.allowed_tools(job_name))
+        if result.output_dir and outputs and "Write" not in allowed_tools:
+            allowed_tools.append("Write")
+
         # Build config
         config = ProviderConfig(
             working_directory=working_dir,
-            allowed_tools=workflow.allowed_tools(job_name),
+            allowed_tools=allowed_tools,
             max_turns=workflow.max_turns(job_name),
             max_budget_usd=workflow.max_budget(job_name),
             permission_mode=workflow.permission_mode(job_name),
             model=workflow.model(job_name),
+            mcp_servers=mcp_servers,
+            extra_env=extra_env,
         )
 
         # Dry run - don't execute
@@ -243,7 +269,11 @@ class JobRunner:
         return result
 
     def _build_goals_prompt(
-        self, job: Job, context_results: dict[str, str], output_dir: str | None = None
+        self,
+        job: Job,
+        context_results: dict[str, str],
+        output_dir: str | None = None,
+        expr_context: ExpressionContext | None = None,
     ) -> str:
         """Build a prompt from goals and gathered context."""
         parts: list[str] = []
@@ -260,14 +290,15 @@ class JobRunner:
             parts.append(f"Your scratch directory for this job is: `{output_dir}`\n")
             parts.append("Use this directory for any files you need to create.\n\n")
 
-        # Add goals section - interpolate ${{ job.output_dir }} in goals
+        # Add goals section - interpolate all ${{ }} expressions
         parts.append("## Goals\n")
         parts.append("Accomplish the following goals:\n")
         for i, goal in enumerate(job.goals or [], 1):
-            # Replace ${{ job.output_dir }} with actual value
             interpolated_goal = goal
-            if output_dir:
-                interpolated_goal = goal.replace("${{ job.output_dir }}", output_dir)
+            if expr_context:
+                interpolated_goal = self.expression_evaluator.interpolate(
+                    interpolated_goal, expr_context
+                )
             parts.append(f"{i}. {interpolated_goal}\n")
 
         parts.append("\nUse your judgment on how best to achieve these goals. ")
